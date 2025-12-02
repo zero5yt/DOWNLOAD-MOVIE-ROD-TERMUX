@@ -1,21 +1,19 @@
 #!/bin/bash
-# Edukasyonal na Script: Simple TMDB Movie Search at Poster Downloader
+# Script: Direct Movie URL Downloader
 
 # --------------------------
-# 1. Configuration / Variables
+# 1. Configuration / Variables (Wala na tayong TMDB keys)
 # --------------------------
-API_KEY="2ca7867bd79df533100a376465e92a0f"  # Iyong TMDB API Key
-TMDB_URL="https://api.themoviedb.org/3/search/movie"
-IMAGE_BASE_URL="https://image.tmdb.org/t/p/w500" # Base URL para sa pagkuha ng poster images
+# Walang kailangan na TMDB keys/URLs dito.
 
 # --------------------------
 # 2. Function: Check Prerequisites
 # --------------------------
 check_prereqs() {
-    # Dapat may 'curl', 'jq', at 'wget'
-    if ! command -v curl &> /dev/null || ! command -v jq &> /dev/null || ! command -v wget &> /dev/null; then
-        echo "ERROR: Kailangan mo ng 'curl', 'jq', at 'wget' packages."
-        echo "Paki-install sa Termux: pkg install curl jq wget -y"
+    # Kailangan lang ng 'wget' at 'curl'
+    if ! command -v wget &> /dev/null && ! command -v curl &> /dev/null; then
+        echo "ERROR: Kailangan mo ng 'wget' o 'curl' packages."
+        echo "Paki-install sa Termux: pkg install wget curl -y"
         exit 1
     fi
 }
@@ -26,57 +24,56 @@ check_prereqs() {
 
 check_prereqs
 
-# Kumuha ng input mula sa user
-read -p "I-type ang title ng pelikula: " search_query
+echo "--- DIRECT MOVIE DOWNLOADER ---"
 
-# I-encode ang search query para sa URL (palitan ang space ng %20)
-ENCODED_QUERY=$(echo "$search_query" | sed 's/ /%20/g')
+# Kumuha ng input mula sa user (ang direct URL)
+read -p "I-paste ang DIRECT MOVIE URL (e.g., http://.../movie.mp4) dito: " movie_url
 
-echo "Naghahanap ng pelikula para sa: $search_query"
-
-# I-construct ang final API URL
-FULL_URL="${TMDB_URL}?api_key=${API_KEY}&query=${ENCODED_QUERY}"
-
-# Tawagin ang API at i-store ang JSON response
-RESPONSE=$(curl -s "$FULL_URL")
-
-# I-check kung may resulta
-if [ "$(echo "$RESPONSE" | jq '.total_results')" == "0" ]; then
-    echo "Walang nakitang resulta para sa '$search_query'."
-else
-    echo -e "\n--- TOP RESULT ---"
-    
-    # Gamitin ang jq para kumuha ng data mula sa unang (index 0) resulta
-    TITLE=$(echo "$RESPONSE" | jq -r '.results[0].title')
-    RELEASE_DATE=$(echo "$RESPONSE" | jq -r '.results[0].release_date')
-    OVERVIEW=$(echo "$RESPONSE" | jq -r '.results[0].overview')
-    POSTER_PATH=$(echo "$RESPONSE" | jq -r '.results[0].poster_path')
-
-    echo "Title: $TITLE"
-    echo "Release Date: $RELEASE_DATE"
-    echo "Overview: $OVERVIEW"
-    
-    # --- IMAGE DOWNLOAD LOGIC ---
-    if [ "$POSTER_PATH" != "null" ]; then
-        POSTER_URL="${IMAGE_BASE_URL}${POSTER_PATH}"
-        # Linisin ang TITLE para sa filename (inalis ang mga characters na hindi pwede)
-        CLEAN_TITLE=$(echo "$TITLE" | tr -cd '[:alnum:]._-')
-        FILE_NAME="${CLEAN_TITLE}_poster.jpg" 
-        
-        echo -e "\n--- DOWNLOADING POSTER ---"
-        
-        # Gamitin ang 'wget' para i-download ang image
-        if wget -q "$POSTER_URL" -O "$FILE_NAME"; then
-            echo "SUCCESS: Na-save ang Poster bilang: $FILE_NAME"
-        else
-            echo "ERROR: Hindi ma-download ang poster."
-        fi
-    else
-        echo -e "\nWalang available na poster image para sa pelikulang ito."
-    fi
-    # ----------------------------
-
-    echo "------------------"
+# I-check kung may in-input
+if [ -z "$movie_url" ]; then
+    echo "ERROR: Walang in-input na URL."
+    exit 1
 fi
 
-echo "Tapos na ang TMDB script."
+# Kumuha ng default filename mula sa URL (e.g., kukunin ang 'movie.mp4' mula sa huling part ng link)
+# Ang 'basename' ay kukuha ng filename mula sa path
+DEFAULT_FILENAME=$(basename "$movie_url")
+
+# Linisin ang default filename (para sa mga characters na hindi pwede)
+CLEAN_DEFAULT_FILENAME=$(echo "$DEFAULT_FILENAME" | tr -cd '[:alnum:]._-')
+
+# Kumuha ng desired output filename mula sa user, gamit ang CLEAN_DEFAULT_FILENAME bilang suggestion
+read -p "I-type ang output filename (default: $CLEAN_DEFAULT_FILENAME): " user_filename
+
+# Gamitin ang input ng user, pero kung wala siyang in-input, gamitin ang default filename
+FILE_NAME=${user_filename:-$CLEAN_DEFAULT_FILENAME}
+
+echo "Sinisimulan ang pag-download..."
+echo "Source: $movie_url"
+echo "Saving as: $FILE_NAME"
+echo "-----------------------------------"
+
+# Gamitin ang 'wget' para i-download ang file
+# Ang 'wget' ay mas madalas gamitin para sa download ng malaking file
+if command -v wget &> /dev/null; then
+    # -c para mag-resume kung sakaling ma-interrupt (laking tulong sa Termux)
+    # -O para i-save sa specific filename
+    if wget -c "$movie_url" -O "$FILE_NAME"; then
+        echo -e "\nSUCCESS: Kumpleto na ang pag-download at na-save bilang: $FILE_NAME"
+    else
+        echo -e "\nERROR: Hindi ma-download ang file. Paki-check ang URL, network connection, at file size limit."
+    fi
+elif command -v curl &> /dev/null; then
+    # Kung walang wget, gamitin ang curl (walang resume capability dito)
+    echo "NOTE: Gumagamit ng curl (walang resume capability)."
+    if curl -L "$movie_url" -o "$FILE_NAME"; then
+        echo -e "\nSUCCESS: Kumpleto na ang pag-download at na-save bilang: $FILE_NAME"
+    else
+        echo -e "\nERROR: Hindi ma-download ang file. Paki-check ang URL, network connection, at file size limit."
+    fi
+else
+    echo "FATAL ERROR: Walang 'wget' o 'curl' na nakita, kahit sinabing installed."
+fi
+
+echo "-----------------------------------"
+echo "Tapos na ang Download script."
